@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>고래를 구해줘 — 페트병 던지기</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+    background: #e6f1fb;
+    color: #2c2c2a;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .app { width: 100%; max-width: 720px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 20px; font-weight: 500; text-align: center; }
+  .device-row {
+    display: flex; align-items: center; gap: 8px;
+    background: white; border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 8px; padding: 8px 12px;
+  }
+  .device-row label { font-size: 13px; color: #666; white-space: nowrap; }
+  select {
+    flex: 1; padding: 6px 8px; font-size: 13px;
+    border: 1px solid rgba(0,0,0,0.15); border-radius: 6px;
+    background: white; font-family: inherit; color: #2c2c2a; cursor: pointer;
+    min-width: 0;
+  }
+  .refresh-btn {
+    padding: 6px 10px; font-size: 14px;
+    background: #f0efea; border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 6px; cursor: pointer; font-family: inherit; white-space: nowrap;
+  }
+  .refresh-btn:hover { background: #e8e6df; }
+  .stage {
+    position: relative; width: 100%; aspect-ratio: 4/3;
+    background: linear-gradient(180deg, #5DCAA5 0%, #378ADD 40%, #185FA5 80%, #0C447C 100%);
+    border-radius: 12px; overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .stage video { display: none; }
+  .stage canvas.output {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1);
+  }
+  .stage canvas.game {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 3;
+  }
+  .light {
+    position: absolute; border-radius: 50%;
+    background: rgba(255, 255, 200, 0.4);
+    animation: sparkle 6s ease-in-out infinite;
+    z-index: 2; pointer-events: none;
+  }
+  .light:nth-child(1) { left: 15%; top: 20%; width: 4px; height: 4px; animation-delay: 0s; }
+  .light:nth-child(2) { left: 30%; top: 35%; width: 6px; height: 6px; animation-delay: 1.5s; }
+  .light:nth-child(3) { left: 60%; top: 15%; width: 3px; height: 3px; animation-delay: 3s; }
+  .light:nth-child(4) { left: 75%; top: 40%; width: 5px; height: 5px; animation-delay: 2s; }
+  .light:nth-child(5) { left: 85%; top: 25%; width: 4px; height: 4px; animation-delay: 4s; }
+  @keyframes sparkle {
+    0%, 100% { opacity: 0.3; transform: translateY(0); }
+    50% { opacity: 1; transform: translateY(-20px); }
+  }
+  .placeholder {
+    position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center;
+    color: white; font-size: 14px; text-align: center; padding: 20px; line-height: 1.6;
+    z-index: 7;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .badge {
+    position: absolute; top: 12px; left: 12px;
+    background: rgba(255,255,255,0.92); border: 1px solid rgba(0,0,0,0.08);
+    padding: 6px 12px; border-radius: 8px;
+    font-size: 12px; color: #555;
+    display: flex; align-items: center; gap: 6px; z-index: 6;
+    backdrop-filter: blur(4px);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #888; }
+  .dot.on { background: #1D9E75; }
+  .dot.grab { background: #D85A30; }
+  .overlay-stats {
+    position: absolute; top: 12px; right: 12px;
+    display: flex; gap: 8px; z-index: 6;
+  }
+  .overlay-stat {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0,0,0,0.08);
+    padding: 6px 12px; border-radius: 8px;
+    font-size: 12px; color: #333;
+    display: flex; align-items: center; gap: 8px;
+    backdrop-filter: blur(4px);
+    min-width: 80px;
+  }
+  .overlay-stat .ol-label { color: #666; }
+  .overlay-stat .ol-num { font-weight: 600; font-size: 16px; }
+  .overlay-stat.piled .ol-num { color: #D85A30; }
+  .overlay-stat.thrown .ol-num { color: #1D9E75; }
+  .controls { display: flex; gap: 8px; }
+  button.main {
+    flex: 1; padding: 10px 16px; font-size: 14px;
+    background: white; border: 1px solid rgba(0,0,0,0.15);
+    border-radius: 8px; cursor: pointer; font-family: inherit; transition: background 0.15s;
+  }
+  button.main:hover { background: #f0efea; }
+  button.main:active { transform: scale(0.98); }
+  .hint { font-size: 12px; color: #555; text-align: center; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🐋 고래를 구해줘 — 페트병 던지기</h1>
+
+  <div class="device-row">
+    <label for="cameraSelect">카메라</label>
+    <select id="cameraSelect">
+      <option value="">시작 버튼을 누르면 목록이 나타납니다</option>
+    </select>
+    <button class="refresh-btn" id="refreshBtn" title="카메라 목록 새로고침">↻</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="badge"><span class="dot" id="statusDot"></span><span id="statusText">카메라 대기중</span></div>
+
+    <div class="overlay-stats">
+      <div class="overlay-stat piled">
+        <span class="ol-label">쌓임</span>
+        <span class="ol-num" id="piled">0</span>
+      </div>
+      <div class="overlay-stat thrown">
+        <span class="ol-label">제거</span>
+        <span class="ol-num" id="thrown">0</span>
+      </div>
+    </div>
+
+    <div class="light"></div>
+    <div class="light"></div>
+    <div class="light"></div>
+    <div class="light"></div>
+    <div class="light"></div>
+
+    <div class="placeholder" id="placeholder">시작 버튼을 누르면<br>카메라가 활성화됩니다</div>
+
+    <video id="video" autoplay playsinline muted></video>
+    <canvas class="output" id="output"></canvas>
+    <canvas class="game" id="game"></canvas>
+  </div>
+
+  <div class="controls">
+    <button class="main" id="startBtn">시작</button>
+    <button class="main" id="resetBtn">초기화</button>
+    <button class="main" id="stopBtn">정지</button>
+  </div>
+  <p class="hint">
+    손으로 페트병을 <b>주먹 쥐어</b> 잡고, 살짝만 움직이며 펴도 화면 밖으로 던져져요.<br>
+    페트병이 많아지면 고래가 슬퍼해요. 모두 치우면 고래가 춤춥니다! 🎉
+  </p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
+<script>
+(function(){
+  const video = document.getElementById('video');
+  const output = document.getElementById('output');
+  const outCtx = output.getContext('2d');
+  const game = document.getElementById('game');
+  const gCtx = game.getContext('2d');
+  const placeholder = document.getElementById('placeholder');
+  const thrownEl = document.getElementById('thrown');
+  const piledEl = document.getElementById('piled');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const cameraSelect = document.getElementById('cameraSelect');
+  const refreshBtn = document.getElementById('refreshBtn');
+
+  let hands = null;
+  let segmenter = null;
+  let running = false;
+  let currentStream = null;
+  let rafId = null;
+  let currentState = 'unknown';
+  let stateBuffer = [];
+  const BUFFER_SIZE = 3;
+  const VIRTUAL_RE = /xsplit|obs|virtual|snap|manycam|nvidia broadcast|droidcam/i;
+  let latestMask = null;
+
+  let bottles = [];
+  let thrownCount = 0;
+  let grabbedBottle = null;
+  let handPos = null;
+  let handHistory = [];
+  let isGrabbing = false;
+  let lastSpawnTime = 0;
+  let gameStartTime = 0;
+  let hasSpawnedAny = false; // 최소 한 번이라도 스폰됐는지
+
+  // 이펙트 배열 — 던지기 궤적, 스타버스트 등
+  let effects = [];
+
+  // 고래 상태
+  let whaleState = {
+    mode: 'normal',       // 'normal' | 'sad' | 'dancing'
+    sadLevel: 0,          // 0~1
+    danceStart: 0,        // 춤 시작 시각
+    exitStart: 0,         // 퇴장 시작 시각
+    danceExiting: false,  // 퇴장 중
+    x: null, y: null,
+    scale: 1,
+    rot: 0,
+    hasDanced: false
+  };
+
+  // 축하 하트/별 파티클
+  let celebrateParticles = [];
+
+  let corals = [];
+  function generateCorals(w, h){
+    corals = [];
+    const whaleH = getWhaleHeight(w, h);
+    const whaleTop = h - whaleH * 0.5 - whaleH / 2;
+    const groundLine = whaleTop + 10;
+    const positions = [0.08, 0.22, 0.78, 0.92];
+    const types = ['branchy', 'fan', 'fan', 'branchy'];
+    const colors = ['#F09595', '#EF9F27', '#ED93B1', '#FAC775'];
+    for(let i = 0; i < positions.length; i++){
+      corals.push({
+        x: positions[i] * w,
+        y: groundLine,
+        height: 50 + Math.random() * 40,
+        type: types[i],
+        color: colors[i],
+        swayPhase: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function getWhaleHeight(w, h){ return Math.min(h * 0.4, w * 0.95 * 0.28); }
+
+  function setStatus(text, mode){
+    statusText.textContent = text;
+    statusDot.classList.remove('on','grab');
+    if(mode === 'open') statusDot.classList.add('on');
+    else if(mode === 'closed') statusDot.classList.add('grab');
+  }
+
+  async function loadCameraList(){
+    try {
+      let tempStream = null;
+      if(!currentStream){
+        try { tempStream = await navigator.mediaDevices.getUserMedia({ video: true }); } catch(e){}
+      }
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      if(tempStream) tempStream.getTracks().forEach(t => t.stop());
+      const prev = cameraSelect.value;
+      cameraSelect.innerHTML = '';
+      if(cams.length === 0){
+        const opt = document.createElement('option');
+        opt.textContent = '카메라 없음'; opt.value = '';
+        cameraSelect.appendChild(opt);
+        return [];
+      }
+      cams.forEach((cam, i) => {
+        const opt = document.createElement('option');
+        opt.value = cam.deviceId;
+        let name = cam.label || `카메라 ${i+1}`;
+        if(VIRTUAL_RE.test(name)) name = '🎬 ' + name + ' (가상)';
+        opt.textContent = name;
+        cameraSelect.appendChild(opt);
+      });
+      if(prev && cams.some(c => c.deviceId === prev)){
+        cameraSelect.value = prev;
+      } else {
+        const real = cams.find(c => !VIRTUAL_RE.test(c.label || ''));
+        cameraSelect.value = (real || cams[0]).deviceId;
+      }
+      return cams;
+    } catch(e){ console.error(e); return []; }
+  }
+
+  function countExtendedFingers(landmarks){
+    const tips = [4,8,12,16,20];
+    const pips = [3,6,10,14,18];
+    let ext = 0;
+    for(let i=1; i<5; i++){
+      if(landmarks[tips[i]].y < landmarks[pips[i]].y - 0.02) ext++;
+    }
+    const dist = (a,b)=>Math.hypot(a.x-b.x, a.y-b.y);
+    if(dist(landmarks[4], landmarks[0]) > dist(landmarks[3], landmarks[0]) * 1.1) ext++;
+    return ext;
+  }
+  function classify(landmarks){
+    const ext = countExtendedFingers(landmarks);
+    if(ext >= 4) return 'open';
+    if(ext <= 1) return 'closed';
+    return 'transition';
+  }
+  function pushState(s){
+    stateBuffer.push(s);
+    if(stateBuffer.length > BUFFER_SIZE) stateBuffer.shift();
+    if(stateBuffer.length === BUFFER_SIZE){
+      const allSame = stateBuffer.every(x => x === s);
+      if(allSame && s !== 'transition' && s !== currentState){
+        currentState = s;
+        isGrabbing = (s === 'closed');
+        if(s === 'open') setStatus('손바닥', 'open');
+        else if(s === 'closed') setStatus('주먹', 'closed');
+      }
+    }
+  }
+
+  // 쓰레기 종류 — 페트병 60%, 나머지 40%
+  const TRASH_TYPES = [
+    'bottle','bottle','bottle','bottle','bottle','bottle', // 60%
+    'can','can',        // 20%
+    'bag',              // 10%
+    'cup'               // 10%
+  ];
+
+  function spawnTrash(w, typeOverride){
+    const x = 40 + Math.random() * (w - 80);
+    const type = typeOverride || TRASH_TYPES[Math.floor(Math.random() * TRASH_TYPES.length)];
+    const size = 0.9 + Math.random() * 0.4;
+
+    // 종류별 충돌 박스 크기
+    const dims = {
+      bottle: { w: 26, h: 64 },
+      can:    { w: 28, h: 48 },
+      bag:    { w: 50, h: 40 },
+      cup:    { w: 36, h: 44 },
+    };
+    const d = dims[type];
+
+    return {
+      x, y: -60,
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: 0.5 + Math.random() * 0.8,
+      rot: Math.random() * Math.PI * 2,
+      vrot: (Math.random() - 0.5) * 0.08,
+      size,
+      type,
+      width: d.w * size,
+      height: d.h * size,
+      crushed: 0,
+      landed: false,
+      grabbed: false,
+      removing: false,
+      removeProgress: 0,
+      id: Math.random()
+    };
+  }
+
+  // 하위 호환 — 기존 spawnBottle 호출 유지
+  function spawnBottle(w){ return spawnTrash(w, 'bottle'); }
+
+  // 게임 시작 시 초기 쓰레기 10개 — 이미 쌓인 상태로 배치
+  function spawnInitialBottles(w, h){
+    const whaleH = getWhaleHeight(w, h);
+    const whaleTop = h - whaleH * 0.5 - whaleH / 2;
+    const groundY = whaleTop + 15;
+    const COUNT = 10;
+    for(let i = 0; i < COUNT; i++){
+      const b = spawnTrash(w);
+      const frac = (i + 0.5) / COUNT;
+      b.x = frac * w + (Math.random() - 0.5) * 30;
+      b.x = Math.max(b.width/2 + 5, Math.min(w - b.width/2 - 5, b.x));
+      const centerDist = Math.abs(b.x - w/2) / (w/2);
+      const curvedGround = groundY + centerDist * centerDist * 40;
+      // 2층까지 쌓기 — 절반은 2층
+      const layer = i < COUNT * 0.6 ? 0 : 1;
+      b.y = curvedGround - b.height/2 - layer * b.height * 0.85 - Math.random() * 6;
+      b.vx = 0; b.vy = 0;
+      b.rot = (Math.random() - 0.5) * 0.35;
+      b.vrot = 0;
+      b.landed = true;
+      bottles.push(b);
+    }
+    hasSpawnedAny = true;
+  }
+
+  // ====== 쓰레기 그리기 ======
+  function drawCan(ctx, s, cr){
+    const jitter = cr * 1.5;
+    const squash = 1 - cr * 0.3;
+    ctx.scale(1, squash);
+    // 몸통
+    ctx.fillStyle = 'rgba(210,210,210,0.92)';
+    ctx.strokeStyle = 'rgba(80,80,80,0.9)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.roundRect(-11*s+(Math.random()-0.5)*jitter, -20*s, 22*s, 40*s, 3*s);
+    ctx.fill(); ctx.stroke();
+    // 캔 라인
+    ctx.strokeStyle = 'rgba(150,150,150,0.7)';
+    ctx.lineWidth = 1;
+    for(let y=-12;y<=12;y+=8){
+      ctx.beginPath();
+      ctx.moveTo(-11*s, y*s); ctx.lineTo(11*s, y*s); ctx.stroke();
+    }
+    // 레이블 (빨간 띠)
+    ctx.fillStyle = 'rgba(200,40,40,0.85)';
+    ctx.fillRect(-10*s, -6*s, 20*s, 12*s);
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${5*s}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('CAN', 0, 2*s);
+    // 상단 뚜껑
+    ctx.fillStyle = 'rgba(180,180,180,0.95)';
+    ctx.beginPath();
+    ctx.ellipse(0, -20*s, 11*s, 3*s, 0, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+    // 탭
+    ctx.strokeStyle = 'rgba(100,100,100,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(3*s, -20*s, 4*s, 0.3, Math.PI-0.3); ctx.stroke();
+  }
+
+  function drawBag(ctx, s, cr, t){
+    const jitter = cr * 2;
+    const wave = Math.sin(t * 0.005) * 3 * s; // 비닐 펄럭임
+    ctx.fillStyle = 'rgba(240,240,180,0.7)';
+    ctx.strokeStyle = 'rgba(160,160,60,0.85)';
+    ctx.lineWidth = 1.2;
+    // 봉지 몸통 (불룩한 모양)
+    ctx.beginPath();
+    ctx.moveTo(-8*s+(Math.random()-0.5)*jitter, -18*s);
+    ctx.bezierCurveTo(
+      -22*s+wave, -5*s,
+      -20*s-wave, 10*s,
+      -10*s+(Math.random()-0.5)*jitter, 18*s
+    );
+    ctx.lineTo(10*s+(Math.random()-0.5)*jitter, 18*s);
+    ctx.bezierCurveTo(
+      20*s+wave, 10*s,
+      22*s-wave, -5*s,
+      8*s+(Math.random()-0.5)*jitter, -18*s
+    );
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // 손잡이
+    ctx.strokeStyle = 'rgba(160,160,60,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-6*s, -18*s); ctx.quadraticCurveTo(-10*s+wave, -28*s, -2*s, -22*s); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(6*s, -18*s); ctx.quadraticCurveTo(10*s-wave, -28*s, 2*s, -22*s); ctx.stroke();
+    // 줄무늬
+    ctx.strokeStyle = 'rgba(160,160,60,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-4*s, -10*s); ctx.lineTo(-6*s, 12*s); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(4*s, -10*s); ctx.lineTo(6*s, 12*s); ctx.stroke();
+  }
+
+  function drawCup(ctx, s, cr){
+    const jitter = cr * 1.5;
+    const squash = 1 - cr * 0.25;
+    ctx.scale(1, squash);
+    // 컵 몸통 (사다리꼴)
+    ctx.fillStyle = 'rgba(240,200,150,0.88)';
+    ctx.strokeStyle = 'rgba(150,100,50,0.9)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-10*s+(Math.random()-0.5)*jitter, -18*s);
+    ctx.lineTo(-14*s+(Math.random()-0.5)*jitter, 18*s);
+    ctx.quadraticCurveTo(-14*s, 20*s, -10*s, 20*s);
+    ctx.lineTo(10*s, 20*s);
+    ctx.quadraticCurveTo(14*s, 20*s, 14*s+(Math.random()-0.5)*jitter, 18*s);
+    ctx.lineTo(10*s+(Math.random()-0.5)*jitter, -18*s);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // 뚜껑
+    ctx.fillStyle = 'rgba(200,150,100,0.9)';
+    ctx.fillRect(-11*s, -22*s, 22*s, 5*s);
+    ctx.strokeRect(-11*s, -22*s, 22*s, 5*s);
+    // 빨대
+    ctx.strokeStyle = 'rgba(220,80,80,0.9)';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(4*s, -22*s); ctx.lineTo(8*s, -36*s); ctx.stroke();
+    // 라벨
+    ctx.fillStyle = 'rgba(200,100,50,0.7)';
+    ctx.fillRect(-8*s, -5*s, 16*s, 10*s);
+    ctx.fillStyle = '#fff';
+    ctx.font = `${4*s}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('라면', 0, 2*s);
+  }
+
+  function drawBottle(ctx, b, t){
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.rot);
+    const s = b.size;
+    const cr = b.crushed;
+    ctx.globalAlpha = b.removing ? Math.max(0, 1 - b.removeProgress * 0.7) : 1;
+
+    if(b.type === 'can'){
+      drawCan(ctx, s, cr);
+    } else if(b.type === 'bag'){
+      drawBag(ctx, s, cr, t);
+    } else if(b.type === 'cup'){
+      drawCup(ctx, s, cr);
+    } else {
+      // 페트병 (기본)
+      const jitter = cr * 2;
+      const squash = 1 - cr * 0.35;
+      ctx.scale(1, squash);
+      ctx.fillStyle = 'rgba(220, 240, 250, 0.8)';
+      ctx.strokeStyle = 'rgba(30, 90, 130, 0.9)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-10*s + (Math.random()-0.5)*jitter, -20*s);
+      ctx.lineTo(-11*s + (Math.random()-0.5)*jitter, 20*s);
+      ctx.quadraticCurveTo(-11*s, 28*s, -8*s, 28*s);
+      ctx.lineTo(8*s, 28*s);
+      ctx.quadraticCurveTo(11*s, 28*s, 11*s + (Math.random()-0.5)*jitter, 20*s);
+      ctx.lineTo(10*s + (Math.random()-0.5)*jitter, -20*s);
+      ctx.quadraticCurveTo(10*s, -24*s, 6*s, -25*s);
+      ctx.lineTo(-6*s, -25*s);
+      ctx.quadraticCurveTo(-10*s, -24*s, -10*s, -20*s);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(-9*s, -5*s, 18*s, 12*s);
+      ctx.strokeStyle = 'rgba(200,50,50,0.8)';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(-9*s, -5*s, 18*s, 12*s);
+      ctx.fillStyle = 'rgba(200,50,50,0.95)';
+      ctx.font = `${5*s}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('PET', 0, 2*s);
+      ctx.fillStyle = '#993556';
+      ctx.fillRect(-5*s, -30*s, 10*s, 5*s);
+      ctx.fillStyle = 'rgba(220,240,250,0.9)';
+      ctx.fillRect(-4*s, -25*s, 8*s, 3*s);
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-6*s, -18*s); ctx.lineTo(-7*s, 20*s); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ====== 이펙트 ======
+  function spawnStarburst(x, y){
+    // 펑! 터지는 별 모양
+    effects.push({
+      type: 'starburst',
+      x, y,
+      age: 0,
+      life: 40
+    });
+  }
+
+  function drawEffects(ctx, dt){
+    for(const e of effects){
+      e.age += dt;
+      if(e.type === 'starburst'){
+        const progress = e.age / e.life;
+        if(progress >= 1) continue;
+        const size = 10 + progress * 50;
+        const alpha = 1 - progress;
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.globalAlpha = alpha;
+        // 8방향 별 광선
+        ctx.strokeStyle = '#FAC775';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        for(let i = 0; i < 8; i++){
+          const ang = (i / 8) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(ang) * size * 0.3, Math.sin(ang) * size * 0.3);
+          ctx.lineTo(Math.cos(ang) * size, Math.sin(ang) * size);
+          ctx.stroke();
+        }
+        // 중앙 원
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(0, 0, size * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+        // 텍스트 "POW!" 또는 "ZAP!"
+        if(progress < 0.6){
+          ctx.fillStyle = '#D85A30';
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 3;
+          ctx.font = `bold ${14 + progress * 10}px sans-serif`;
+          ctx.textAlign = 'center';
+          const txt = e.text || 'POW!';
+          ctx.strokeText(txt, 0, 5);
+          ctx.fillText(txt, 0, 5);
+        }
+        ctx.restore();
+      }
+    }
+    effects = effects.filter(e => e.age < e.life);
+  }
+
+  // ====== 축하 파티클 ======
+  function spawnCelebration(w, h){
+    for(let i = 0; i < 30; i++){
+      celebrateParticles.push({
+        x: w/2 + (Math.random() - 0.5) * 100,
+        y: h/2 + (Math.random() - 0.5) * 100,
+        vx: (Math.random() - 0.5) * 12,
+        vy: -Math.random() * 12 - 2,
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.3,
+        type: Math.random() < 0.5 ? 'star' : 'heart',
+        color: ['#F09595', '#FAC775', '#1D9E75', '#378ADD', '#ED93B1'][Math.floor(Math.random() * 5)],
+        size: 8 + Math.random() * 8,
+        life: 120,
+        age: 0
+      });
+    }
+  }
+
+  function drawCelebration(ctx, dt){
+    for(const p of celebrateParticles){
+      p.age += dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 0.2 * dt;
+      p.rot += p.vrot * dt;
+      const alpha = Math.max(0, 1 - p.age / p.life);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      if(p.type === 'star'){
+        ctx.beginPath();
+        for(let i = 0; i < 5; i++){
+          const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+          const r = i % 2 === 0 ? p.size : p.size * 0.4;
+          const x = Math.cos(a) * r;
+          const y = Math.sin(a) * r;
+          if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        // 하트
+        const s = p.size * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.3);
+        ctx.bezierCurveTo(-s, -s * 0.5, -s * 1.2, s * 0.3, 0, s);
+        ctx.bezierCurveTo(s * 1.2, s * 0.3, s, -s * 0.5, 0, s * 0.3);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    celebrateParticles = celebrateParticles.filter(p => p.age < p.life && p.y < 2000);
+  }
+
+  // ====== 산호초 ======
+  function drawCorals(ctx, t){
+    for(const c of corals){
+      const sway = Math.sin(t * 0.001 + c.swayPhase) * 3;
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      if(c.type === 'branchy'){
+        ctx.strokeStyle = c.color;
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(sway * 0.5, -c.height * 0.5, sway, -c.height);
+        ctx.stroke();
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, -c.height * 0.3);
+        ctx.quadraticCurveTo(-12 + sway, -c.height * 0.5, -18 + sway, -c.height * 0.65);
+        ctx.moveTo(0, -c.height * 0.5);
+        ctx.quadraticCurveTo(12 + sway, -c.height * 0.65, 18 + sway, -c.height * 0.8);
+        ctx.moveTo(0, -c.height * 0.7);
+        ctx.quadraticCurveTo(-8 + sway, -c.height * 0.82, -14 + sway, -c.height * 0.92);
+        ctx.stroke();
+        ctx.fillStyle = c.color;
+        ctx.beginPath();
+        ctx.arc(sway, -c.height, 5, 0, Math.PI * 2);
+        ctx.arc(-18 + sway, -c.height * 0.65, 3, 0, Math.PI * 2);
+        ctx.arc(18 + sway, -c.height * 0.8, 3, 0, Math.PI * 2);
+        ctx.arc(-14 + sway, -c.height * 0.92, 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = c.color;
+        ctx.strokeStyle = c.color;
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(sway * 0.3, -c.height * 0.3, sway * 0.5, -c.height * 0.4);
+        ctx.stroke();
+        ctx.lineWidth = 3;
+        for(let i = -3; i <= 3; i++){
+          ctx.beginPath();
+          const startX = sway * 0.5;
+          const startY = -c.height * 0.4;
+          const angle = i * 0.25;
+          const len = c.height * 0.65 * (1 - Math.abs(i) * 0.08);
+          ctx.moveTo(startX, startY);
+          ctx.quadraticCurveTo(
+            startX + Math.sin(angle) * len * 0.5 + sway * 0.3,
+            startY - len * 0.5,
+            startX + Math.sin(angle) * len + sway,
+            startY - len * 0.85
+          );
+          ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.arc(sway * 0.5 + sway, -c.height * 0.95, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // ====== 고래 비디오 (흰 배경 투명 처리) ======
+  const whaleVideo = document.createElement('video');
+  whaleVideo.src = './wh.mp4';
+  whaleVideo.loop = true;
+  whaleVideo.muted = true;
+  whaleVideo.playsInline = true;
+  // 로딩 완료 후 재생 — 깜빡임 방지
+  whaleVideo.addEventListener('canplay', () => {
+    whaleVideo.play().catch(()=>{});
+  }, { once: false });
+  whaleVideo.load();
+
+  // 엔딩 춤 영상
+  const danceVideo = document.createElement('video');
+  danceVideo.src = './dance.mp4';
+  danceVideo.loop = false;
+  danceVideo.muted = true;
+  danceVideo.playsInline = true;
+  danceVideo.preload = 'auto';
+  danceVideo.load();
+
+  // 흰 배경 제거용 오프스크린 캔버스 (영상별 분리)
+  const offCanvas = document.createElement('canvas');
+  const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+  const offCanvasDance = document.createElement('canvas');
+  const offCtxDance = offCanvasDance.getContext('2d', { willReadFrequently: true });
+
+  function drawWhaleFrame(ctx, dx, dy, dw, dh, srcVideo){
+    const vid = srcVideo || whaleVideo;
+    const oc = (vid === danceVideo) ? offCanvasDance : offCanvas;
+    const oc2 = (vid === danceVideo) ? offCtxDance : offCtx;
+    if(vid.readyState < 1) return;
+    const vw = vid.videoWidth || 640;
+    const vh = vid.videoHeight || 360;
+    if(vw === 0 || vh === 0) return;
+
+    if(oc.width !== vw || oc.height !== vh){
+      oc.width = vw;
+      oc.height = vh;
+    }
+
+    oc2.drawImage(vid, 0, 0, vw, vh);
+
+    try {
+      const imgData = oc2.getImageData(0, 0, vw, vh);
+      const d = imgData.data;
+      for(let i = 0; i < d.length; i += 4){
+        const r = d[i], g = d[i+1], b = d[i+2];
+        if(r > 200 && g > 200 && b > 200){
+          const whiteness = Math.min(r, g, b);
+          d[i+3] = Math.max(0, 255 - (whiteness - 200) * 6);
+        }
+      }
+      oc2.putImageData(imgData, 0, 0);
+    } catch(e) {}
+
+    ctx.drawImage(oc, dx, dy, dw, dh);
+  }
+
+  function drawWhale(ctx, w, h, t){
+    const baseW = w;
+    const baseH = getWhaleHeight(w, h) * 2;
+    const baseY = h - baseH * 0.38 + Math.sin(t * 0.001) * 4;
+
+    if(whaleState.mode === 'dancing'){
+      const now = performance.now();
+      const danceElapsed = now - whaleState.danceStart;   // ms
+      const exitElapsed  = whaleState.danceExiting ? (now - whaleState.exitStart) : 0;
+      const progress = Math.min(1, exitElapsed / 2500);
+
+      let cx, cy, scale, rot;
+      if(whaleState.danceExiting){
+        cx    = w / 2 + progress * w * 1.3;
+        cy    = baseY - progress * h * 0.9;
+        scale = 1 - progress * 0.9;
+        rot   = progress * Math.PI * 0.4;
+      } else {
+        const sec = danceElapsed / 1000;
+        cx    = w / 2 + Math.sin(sec * 2) * 12;
+        cy    = baseY + Math.sin(sec * 3) * 8;
+        scale = 1 + Math.sin(sec * 4) * 0.03;
+        rot   = Math.sin(sec * 2.5) * 0.06;
+      }
+
+      // 댄스 영상 — readyState 무관하게 그리기 시도
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(rot);
+      try {
+        if(danceVideo.readyState >= 1 && danceVideo.videoWidth > 0){
+          drawWhaleFrame(ctx, -baseW/2*scale, -baseH/2*scale, baseW*scale, baseH*scale, danceVideo);
+        } else {
+          // 아직 로딩 중이면 평소 고래 영상으로 대체
+          drawWhaleFrame(ctx, -baseW/2*scale, -baseH/2*scale, baseW*scale, baseH*scale, whaleVideo);
+        }
+      } catch(e){}
+      ctx.restore();
+
+      // 음표
+      if(!whaleState.danceExiting){
+        const sec = danceElapsed / 1000;
+        for(let i = 0; i < 4; i++){
+          const phase = (sec * 0.7 + i * 0.25) % 1;
+          const ang = (i / 4) * Math.PI * 2 + sec * 0.5;
+          const r = 120 + phase * 60;
+          ctx.save();
+          ctx.globalAlpha = 1 - phase;
+          ctx.fillStyle = '#FAC775';
+          ctx.font = `bold ${22 + phase * 10}px serif`;
+          ctx.fillText(i % 2 === 0 ? '♪' : '♫',
+            cx + Math.cos(ang) * r,
+            cy + Math.sin(ang) * r * 0.6);
+          ctx.restore();
+        }
+      }
+    } else {
+      // 평소 — 하단에 가로 꽉 차게
+      if(whaleVideo.readyState >= 1 && whaleVideo.videoWidth > 0){
+        drawWhaleFrame(ctx, 0, baseY - baseH/2, baseW, baseH);
+      }
+    }
+  }
+
+  // ====== 물리 ======
+  function updateGame(w, h, dt){
+    const now = performance.now();
+
+    // 스폰 — 간격 대폭 증가: 2.5~4초
+    const whaleH = getWhaleHeight(w, h);
+    const whaleTop = h - whaleH * 0.5 - whaleH / 2;
+    const groundY = whaleTop + 15;
+
+    const isDancing = whaleState.mode === 'dancing';
+    const activeCount = bottles.filter(b => !b.removing).length;
+
+    // 춤추는 동안은 스폰 중단
+    if(!isDancing && activeCount < 30 && now - lastSpawnTime > 2000 + Math.random() * 1500){
+      bottles.push(spawnTrash(w));
+      lastSpawnTime = now;
+      hasSpawnedAny = true;
+    }
+
+    for(const b of bottles){
+      if(b.removing){
+        b.removeProgress += dt * 0.025;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.vy += 0.2 * dt;
+        b.rot += b.vrot * dt;
+        continue;
+      }
+      if(b.grabbed){
+        if(handPos){
+          b.x = handPos.x;
+          b.y = handPos.y;
+          b.crushed = Math.min(0.8, b.crushed + 0.05);
+          b.rot = Math.sin(now * 0.01) * 0.2;
+        }
+        continue;
+      }
+
+      // 춤 중에는 남은 페트병도 떠오르며 사라지게
+      if(isDancing){
+        b.vy -= 0.25 * dt;
+        b.y += b.vy * dt;
+        b.x += Math.sin(now * 0.003 + b.id) * 1.5;
+        b.rot += 0.04 * dt;
+        if(b.y < -100){ b.removing = true; b.removeProgress = 1; }
+        continue;
+      }
+
+      b.vy += 0.2 * dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.rot += b.vrot * dt;
+
+      const centerDist = Math.abs(b.x - w/2) / (w/2);
+      const curvedGround = groundY + centerDist * centerDist * 40;
+
+      const bottomY = b.y + b.height/2;
+      if(bottomY >= curvedGround){
+        b.y = curvedGround - b.height/2;
+        b.vy = 0; b.vx *= 0.7; b.vrot *= 0.5;
+        b.landed = true;
+      } else {
+        for(const other of bottles){
+          if(other === b || !other.landed || other.grabbed || other.removing) continue;
+          const dx = b.x - other.x;
+          const dy = b.y - other.y;
+          const minDx = (b.width + other.width) / 2 * 0.6;
+          const minDy = (b.height + other.height) / 2 * 0.8;
+          if(Math.abs(dx) < minDx && Math.abs(dy) < minDy && b.y < other.y){
+            b.y = other.y - minDy;
+            b.vy = 0; b.vx *= 0.6; b.vrot *= 0.5;
+            b.landed = true;
+            b.x += dx > 0 ? 2 : -2;
+            break;
+          }
+        }
+      }
+
+      if(b.x < b.width/2){ b.x = b.width/2; b.vx = Math.abs(b.vx) * 0.5; }
+      if(b.x > w - b.width/2){ b.x = w - b.width/2; b.vx = -Math.abs(b.vx) * 0.5; }
+    }
+
+    // 화면 밖 나간 것 제거
+    bottles = bottles.filter(b => {
+      if(b.removing){
+        const out = b.x < -120 || b.x > w + 120 || b.y < -120 || b.y > h + 120 || b.removeProgress >= 1;
+        if(out){
+          // 사라지는 지점에서 스타버스트
+          const ex = Math.max(-50, Math.min(w + 50, b.x));
+          const ey = Math.max(-50, Math.min(h + 50, b.y));
+          spawnStarburst(ex, ey);
+        }
+        return !out;
+      }
+      return true;
+    });
+
+    // ====== 손 상호작용 ======
+    if(handPos && !isDancing){
+      const hvx = handHistory.length > 1 ? (handPos.x - handHistory[0].x) / handHistory.length : 0;
+      const hvy = handHistory.length > 1 ? (handPos.y - handHistory[0].y) / handHistory.length : 0;
+      const speed = Math.hypot(hvx, hvy);
+
+      if(grabbedBottle){
+        // 던지기 트리거 — 두 가지 중 하나라도 만족하면 던짐:
+        // (1) 손을 펴거나, (2) 손을 살짝이라도 움직이면
+        const SMALL_MOVE_THRESHOLD = 2.5;
+        const shouldThrow = !isGrabbing || speed > SMALL_MOVE_THRESHOLD;
+
+        if(shouldThrow){
+          grabbedBottle.removing = true;
+          grabbedBottle.removeProgress = 0;
+
+          const throwPower = 24;
+          const bx = grabbedBottle.x, by = grabbedBottle.y;
+
+          // 손 움직임 방향이 있으면 그 방향으로, 없으면 가장 가까운 경계로
+          if(speed > 0.8){
+            const angle = Math.atan2(hvy, hvx);
+            grabbedBottle.vx = Math.cos(angle) * throwPower;
+            grabbedBottle.vy = Math.sin(angle) * throwPower;
+
+            // 움직임 방향이 화면 안쪽을 향하면 가장 가까운 경계로 보정
+            const toLeft = bx, toRight = w - bx, toTop = by;
+            const minEdge = Math.min(toLeft, toRight, toTop);
+            const heading = {
+              left: grabbedBottle.vx < -5 && toLeft < 400,
+              right: grabbedBottle.vx > 5 && toRight < 400,
+              top: grabbedBottle.vy < -5 && toTop < 400
+            };
+            if(!heading.left && !heading.right && !heading.top){
+              if(minEdge === toLeft) grabbedBottle.vx = -throwPower;
+              else if(minEdge === toRight) grabbedBottle.vx = throwPower;
+              else grabbedBottle.vy = -throwPower;
+            }
+          } else {
+            // 거의 안 움직였으면 가장 가까운 경계로
+            const toLeft = bx, toRight = w - bx, toTop = by;
+            const minEdge = Math.min(toLeft, toRight, toTop);
+            if(minEdge === toLeft){
+              grabbedBottle.vx = -throwPower;
+              grabbedBottle.vy = (Math.random() - 0.5) * 4;
+            } else if(minEdge === toRight){
+              grabbedBottle.vx = throwPower;
+              grabbedBottle.vy = (Math.random() - 0.5) * 4;
+            } else {
+              grabbedBottle.vx = (Math.random() - 0.5) * 4;
+              grabbedBottle.vy = -throwPower;
+            }
+          }
+
+          grabbedBottle.vrot = (Math.random() - 0.5) * 0.4;
+          grabbedBottle.grabbed = false;
+          thrownCount++;
+          thrownEl.textContent = thrownCount;
+          grabbedBottle = null;
+        }
+      } else if(isGrabbing){
+        let closest = null;
+        let minDist = 100; // 잡기 반경 확대 (70 → 100)
+        for(const b of bottles){
+          if(b.grabbed || b.removing) continue;
+          const d = Math.hypot(b.x - handPos.x, b.y - handPos.y);
+          if(d < minDist){ minDist = d; closest = b; }
+        }
+        if(closest){
+          closest.grabbed = true;
+          closest.landed = false;
+          grabbedBottle = closest;
+        }
+      }
+    }
+
+    // ====== 고래 상태 업데이트 ======
+    const piledBottles = bottles.filter(b => b.landed && !b.grabbed && !b.removing);
+    const piled = piledBottles.length;
+    piledEl.textContent = piled;
+
+    // 슬픔 레벨 — 쌓인 수에 비례
+    const targetSad = Math.min(1, piled / 8);
+    whaleState.sadLevel += (targetSad - whaleState.sadLevel) * 0.05;
+
+    // 엔딩 조건 — 쌓인(landed) 페트병이 1개 이하면 바로 트리거
+    if(!whaleState.hasDanced && hasSpawnedAny && piled <= 1){
+      whaleState.mode = 'dancing';
+      whaleState.danceStart = now;
+      whaleState.hasDanced = true;
+      spawnCelebration(w, h);
+      whaleVideo.pause();
+      danceVideo.currentTime = 0;
+      danceVideo.play().catch(()=>{});
+      // 남아있는 모든 페트병 즉시 제거
+      bottles.forEach(b => {
+        if(!b.grabbed){
+          b.removing = true;
+          b.removeProgress = 1;
+        }
+      });
+    }
+
+    // 엔딩 진행 — 3초 춤추고 바로 퇴장
+    if(whaleState.mode === 'dancing'){
+      const danceElapsed = now - whaleState.danceStart;
+      if(danceElapsed > 3000 && !whaleState.danceExiting){
+        whaleState.danceExiting = true;
+        whaleState.exitStart = now;
+      }
+      if(whaleState.danceExiting && (now - whaleState.exitStart) > 2500){
+        whaleState.mode = 'gone';
+      }
+      if(Math.random() < 0.1){
+        celebrateParticles.push({
+          x: Math.random() * w,
+          y: h + 20,
+          vx: (Math.random() - 0.5) * 4,
+          vy: -Math.random() * 10 - 5,
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 0.2,
+          type: Math.random() < 0.5 ? 'star' : 'heart',
+          color: ['#F09595', '#FAC775', '#1D9E75', '#378ADD', '#ED93B1'][Math.floor(Math.random() * 5)],
+          size: 6 + Math.random() * 6,
+          life: 100,
+          age: 0
+        });
+      }
+    }
+  }
+
+  let lastFrameTime = performance.now();
+  function renderGame(){
+    const w = game.width;
+    const h = game.height;
+    const now = performance.now();
+    const dt = Math.min(2, (now - lastFrameTime) / 16.67);
+    lastFrameTime = now;
+
+    gCtx.clearRect(0, 0, w, h);
+
+    updateGame(w, h, dt);
+
+    const gameTime = now - gameStartTime;
+
+    // 순서: 고래 → 산호초 → 페트병 → 이펙트 → 축하 파티클 → 손
+    if(whaleState.mode !== 'gone'){
+      drawWhale(gCtx, w, h, gameTime);
+    }
+
+    if(whaleState.mode === 'normal'){
+      drawCorals(gCtx, gameTime);
+    }
+
+    const sorted = [...bottles].sort((a, b) => a.y - b.y);
+    for(const b of sorted) drawBottle(gCtx, b, gameTime);
+
+    drawEffects(gCtx, dt);
+    drawCelebration(gCtx, dt);
+
+    if(handPos){
+      gCtx.save();
+      gCtx.strokeStyle = isGrabbing ? '#D85A30' : '#1D9E75';
+      gCtx.lineWidth = 3;
+      gCtx.beginPath();
+      gCtx.arc(handPos.x, handPos.y, isGrabbing ? 18 : 28, 0, Math.PI * 2);
+      gCtx.stroke();
+      gCtx.restore();
+    }
+
+    // 고래가 떠나는 중 + 떠난 뒤 메시지 (퇴장 시작하면 바로 표시)
+    if(whaleState.mode === 'gone' || whaleState.danceExiting){
+      gCtx.save();
+      gCtx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      gCtx.fillRect(0, h/2 - 50, w, 100);
+      gCtx.fillStyle = '#fff';
+      gCtx.font = 'bold 22px sans-serif';
+      gCtx.textAlign = 'center';
+      gCtx.fillText('🎉 고래가 행복하게 떠났어요!', w/2, h/2 - 10);
+      gCtx.font = '14px sans-serif';
+      gCtx.fillText('초기화 버튼을 눌러 다시 시작', w/2, h/2 + 20);
+      gCtx.restore();
+    }
+  }
+
+  function drawLandmarks(landmarks, w, h){
+    const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+    outCtx.strokeStyle = '#FAC775';
+    outCtx.lineWidth = 2.5;
+    outCtx.beginPath();
+    for(const [a,b] of CONN){
+      const p1 = landmarks[a], p2 = landmarks[b];
+      outCtx.moveTo(p1.x * w, p1.y * h);
+      outCtx.lineTo(p2.x * w, p2.y * h);
+    }
+    outCtx.stroke();
+    outCtx.fillStyle = '#EF9F27';
+    for(const p of landmarks){
+      outCtx.beginPath();
+      outCtx.arc(p.x * w, p.y * h, 3.5, 0, Math.PI*2);
+      outCtx.fill();
+    }
+  }
+
+  function onSegResults(results){ latestMask = results.segmentationMask; }
+
+  function onHandResults(results){
+    if(!running) return;
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+    output.width = vw; output.height = vh;
+
+    const stage = document.getElementById('stage');
+    const rect = stage.getBoundingClientRect();
+    const newW = Math.round(rect.width);
+    const newH = Math.round(rect.height);
+    if(game.width !== newW || game.height !== newH){
+      game.width = newW;
+      game.height = newH;
+      if(corals.length === 0) generateCorals(newW, newH);
+    }
+
+    outCtx.save();
+    outCtx.clearRect(0, 0, vw, vh);
+    if(latestMask){
+      outCtx.drawImage(latestMask, 0, 0, vw, vh);
+      outCtx.globalCompositeOperation = 'source-in';
+      outCtx.drawImage(video, 0, 0, vw, vh);
+      outCtx.globalCompositeOperation = 'source-over';
+    } else {
+      outCtx.drawImage(video, 0, 0, vw, vh);
+    }
+
+    if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
+      const lm = results.multiHandLandmarks[0];
+      drawLandmarks(lm, vw, vh);
+
+      const palm = [0, 5, 9, 13, 17];
+      let px = 0, py = 0;
+      for(const i of palm){ px += lm[i].x; py += lm[i].y; }
+      px /= palm.length; py /= palm.length;
+
+      const gx = (1 - px) * game.width;
+      const gy = py * game.height;
+      handPos = { x: gx, y: gy };
+      handHistory.push({ x: gx, y: gy });
+      if(handHistory.length > 5) handHistory.shift();
+
+      pushState(classify(lm));
+    } else {
+      handPos = null;
+      handHistory = [];
+      stateBuffer = [];
+      setStatus('손 미감지', null);
+    }
+
+    outCtx.restore();
+  }
+
+  async function processFrame(){
+    if(!running) return;
+    if(video.readyState >= 2){
+      if(segmenter) await segmenter.send({ image: video });
+      if(hands) await hands.send({ image: video });
+    }
+    renderGame();
+    rafId = requestAnimationFrame(processFrame);
+  }
+
+  async function stopStream(){
+    running = false;
+    if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
+    if(currentStream){
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+    latestMask = null;
+  }
+
+  async function start(){
+    if(!cameraSelect.value){
+      await loadCameraList();
+      if(!cameraSelect.value){
+        setStatus('카메라 없음', null);
+        placeholder.innerHTML = '사용 가능한 카메라가 없습니다';
+        return;
+      }
+    }
+    await stopStream();
+    try {
+      setStatus('모델 로딩중…', null);
+      if(!hands){
+        hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.6 });
+        hands.onResults(onHandResults);
+      }
+      if(!segmenter){
+        segmenter = new SelfieSegmentation({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${f}` });
+        segmenter.setOptions({ modelSelection: 1 });
+        segmenter.onResults(onSegResults);
+      }
+      const constraints = {
+        video: {
+          deviceId: { exact: cameraSelect.value },
+          width: { ideal: 640 }, height: { ideal: 480 }
+        }
+      };
+      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = currentStream;
+      await video.play();
+
+      running = true;
+      placeholder.style.display = 'none';
+      setStatus('카메라 활성', 'on');
+      gameStartTime = performance.now();
+      lastFrameTime = gameStartTime;
+      // 첫 자동 스폰은 초기 5개를 처리한 후 여유 있게
+      lastSpawnTime = gameStartTime;
+
+      // 게임 캔버스 크기가 확보되면 초기 5개 스폰, 아직이면 대기 후 시도
+      const tryInitialSpawn = () => {
+        if(game.width > 0 && game.height > 0 && bottles.length === 0){
+          spawnInitialBottles(game.width, game.height);
+        } else if(bottles.length === 0){
+          setTimeout(tryInitialSpawn, 100);
+        }
+      };
+      tryInitialSpawn();
+
+      processFrame();
+      loadCameraList();
+    } catch(e){
+      setStatus('카메라 오류', null);
+      placeholder.innerHTML = '카메라 접근 실패<br><span style="font-size:12px">권한을 허용하거나 다른 카메라를 선택하세요</span>';
+      console.error(e);
+    }
+  }
+
+  async function stop(){
+    await stopStream();
+    outCtx.clearRect(0, 0, output.width, output.height);
+    gCtx.clearRect(0, 0, game.width, game.height);
+    placeholder.style.display = 'flex';
+    placeholder.innerHTML = '정지됨<br>시작 버튼을 누르세요';
+    setStatus('정지됨', null);
+  }
+
+  cameraSelect.addEventListener('change', async () => { if(running) await start(); });
+  refreshBtn.addEventListener('click', loadCameraList);
+  startBtn.addEventListener('click', start);
+  stopBtn.addEventListener('click', stop);
+  resetBtn.addEventListener('click', () => {
+    bottles = [];
+    thrownCount = 0;
+    thrownEl.textContent = '0';
+    piledEl.textContent = '0';
+    grabbedBottle = null;
+    effects = [];
+    celebrateParticles = [];
+    hasSpawnedAny = false;
+    whaleState = {
+      mode: 'normal',
+      sadLevel: 0,
+      danceStart: 0,
+      exitStart: 0,
+      danceExiting: false,
+      x: null, y: null,
+      scale: 1, rot: 0,
+      hasDanced: false
+    };
+    // 실행 중일 때만 초기 스폰
+    if(running && game.width > 0 && game.height > 0){
+      spawnInitialBottles(game.width, game.height);
+      lastSpawnTime = performance.now();
+    }
+  });
+
+  if(navigator.mediaDevices && navigator.mediaDevices.addEventListener){
+    navigator.mediaDevices.addEventListener('devicechange', loadCameraList);
+  }
+})();
+</script>
+</body>
+</html>
